@@ -1,0 +1,12 @@
+# Sage build artifacts
+build/
+*.img
+*.o
+blocks/
+state/
+*.sage.svm
+*.sage.ll
+__pycache__/
+.vscode/
+.idea/
+*.swp
