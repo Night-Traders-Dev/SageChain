@@ -143,6 +143,16 @@ class Chain:
         # validator_root must match registry state when provided
         if b.validator_root != nil and b.validator_root != self.validators.root():
             return [false, errors.ERR_BAD_BLOCK]
+        # Replay transactions to update state and pool (same logic as validate_block)
+        let st = self.state.clone()
+        var pool = self.pool_remaining
+        import orbit.core.ledger as ledgermod
+        let ldg = ledgermod.Ledger(st)
+        for t in b.transactions:
+            let ar = ldg.apply(t, pool)
+            pool = ar[2]
+        self.state = st
+        self.pool_remaining = pool
         push(self.blocks, b)
         return [true, nil]
 

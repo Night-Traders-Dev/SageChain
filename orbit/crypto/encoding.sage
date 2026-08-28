@@ -71,3 +71,54 @@ from crypto.hash import sha256_hex
 
 proc canonical_hash(v):
     return sha256_hex(encode_canonical(v))
+
+# Simple decoder for the subset used in keystore
+proc decode_canonical(s):
+    let idx = {"i": 0}
+    proc _parse():
+        if idx["i"] >= len(s):
+            raise "decode: unexpected end"
+        let c = s[idx["i"]]
+        idx["i"] = idx["i"] + 1
+        if c == "n":
+            return nil
+        if c == "b":
+            let b = s[idx["i"]]
+            idx["i"] = idx["i"] + 1
+            return b == "1"
+        if c == "i":
+            let start = idx["i"]
+            while idx["i"] < len(s) and s[idx["i"]] != "e":
+                idx["i"] = idx["i"] + 1
+            let num_str = slice(s, start, idx["i"])
+            idx["i"] = idx["i"] + 1
+            return int(num_str)
+        if c == "s":
+            let start = idx["i"]
+            while idx["i"] < len(s) and s[idx["i"]] != ":":
+                idx["i"] = idx["i"] + 1
+            let len_str = slice(s, start, idx["i"])
+            idx["i"] = idx["i"] + 1
+            let ln = int(len_str)
+            let val = slice(s, idx["i"], idx["i"] + ln)
+            idx["i"] = idx["i"] + ln
+            return val
+        if c == "l":
+            let arr = []
+            while idx["i"] < len(s) and s[idx["i"]] != "e":
+                push(arr, _parse())
+            idx["i"] = idx["i"] + 1
+            return arr
+        if c == "d":
+            let obj = {}
+            while idx["i"] < len(s) and s[idx["i"]] != "e":
+                let k = _parse()
+                let v = _parse()
+                obj[k] = v
+            idx["i"] = idx["i"] + 1
+            return obj
+        raise "decode: unknown type " + c
+    let result = _parse()
+    if idx["i"] != len(s):
+        raise "decode: trailing data"
+    return result
