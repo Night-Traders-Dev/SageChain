@@ -26,7 +26,8 @@ class Chain:
         self.validators = validatormod.ValidatorRegistry()
         self.vote_pool = []            # votes for the CURRENT tip
         self.finalized_height = 0      # nothing finalized at genesis
-        self.certificates = {}         # height -> FinalityCertificate
+        self.certificates = {"_": nil}  # Sage requires non-empty dict for assignment
+        dict_delete(self.certificates, "_")
 
         # ── build genesis (height 0) ──
         let accounts = genesis.build_genesis_state()
@@ -121,7 +122,8 @@ class Chain:
             trustmod.apply_vote_outcome(self.validators, v.validator_addr,
                                         self.height(), true)
         if res["certificate"] != nil:
-            self.certificates[self.height()] = res["certificate"]
+            let hkey = str(self.height())
+            self.certificates[hkey] = res["certificate"]
             self.finalized_height = self.height()
             self.vote_pool = []          # consumed
             return [true, res["certificate"]]
