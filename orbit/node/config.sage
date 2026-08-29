@@ -69,6 +69,12 @@ proc default_config():
             "data_dir": "./data",
             "engine": "json",
         },
+        "wallet": {
+            "name": "Quegmeister",
+            "seed": "NzW8qEyUQg7X",
+            "keystore_path": "./wallet_keystore.json",
+            "password": "",
+        },
         "validator": {
             "enabled": false,
             "keystore_path": "./validator_keystore.json",
