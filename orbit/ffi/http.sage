@@ -87,7 +87,7 @@ class HTTPServer:
 
         # Find route
         let key = req.method + ":" + req.path
-        if key in self.routes:
+        if dict_has(self.routes, key):
             return self.routes[key](req)
 
         # Try parameterized routes
@@ -168,11 +168,13 @@ proc success_response(data, status = 200):
 # REQUEST PARSING HELPERS
 # ============================================================
 
-proc get_query_param(req, name, default = nil):
+proc get_query_param(req, name, default_val):
+    if default_val == nil:
+        default_val = nil
     # Parse query string from path
     let qmark = req.path.find("?")
     if qmark < 0:
-        return default
+        return default_val
     let query = req.path[qmark + 1:]
     let pairs = query.split("&")
     for pair in pairs:
@@ -182,7 +184,7 @@ proc get_query_param(req, name, default = nil):
             let v = pair[eq + 1:]
             if k == name:
                 return v
-    return default
+    return default_val
 
 proc get_path_param(req, param_name):
     # Extract from route pattern like /blocks/:height

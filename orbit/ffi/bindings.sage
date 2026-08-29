@@ -367,6 +367,15 @@ proc ffi_available():
 proc ffi_version():
     return "0.1.0-stub"
 
+# Get command line arguments
+# Returns: array of strings
+proc ffi_get_args():
+    return []
+
+# Exit process with code
+proc ffi_exit(code):
+    return [true, nil]
+
 # ============================================================
 # ERROR HANDLING
 # ============================================================

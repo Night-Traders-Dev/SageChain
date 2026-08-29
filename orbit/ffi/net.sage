@@ -69,7 +69,7 @@ class TCPServer:
         return [true, {"fd": client_fd, "peer_id": peer_id, "addr": peer_addr}]
 
     proc close_client(self, fd):
-        if fd in self.clients:
+        if dict_has(self.clients, fd):
             if _use_ffi:
                 ffi.ffi_tcp_close(fd)
             self.clients[fd] = nil
@@ -147,7 +147,7 @@ class MessageTransport:
 
     proc stop_server(self, host, port):
         let key = host + ":" + str(port)
-        if key in self.servers:
+        if dict_has(self.servers, key):
             let result = self.servers[key].stop()
             self.servers[key] = nil
             return result
@@ -162,13 +162,13 @@ class MessageTransport:
         return result
 
     proc disconnect_peer(self, peer_id):
-        if peer_id in self.clients:
+        if dict_has(self.clients, peer_id):
             self.clients[peer_id].close()
             self.clients[peer_id] = nil
         return [true, nil]
 
     proc send_message(self, peer_id, message):
-        if peer_id not in self.clients:
+        if not dict_has(self.clients, peer_id):
             return [false, "peer not connected"]
         let encoded = encode_message(message)
         return self.clients[peer_id].send(encoded)
@@ -230,9 +230,9 @@ class ConnectionPool:
         return [true, nil]
 
     proc ensure_connection(self, peer_id, host, port):
-        if peer_id in self.transport.clients:
+        if dict_has(self.transport.clients, peer_id):
             return [true, nil]
-        if peer_id in self.connecting:
+        if dict_has(self.connecting, peer_id):
             return [true, nil]
 
         if len(self.transport.clients) >= self.max_connections:

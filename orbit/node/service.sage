@@ -40,10 +40,13 @@ class Service:
         return self.start()
 
     proc get_status(self):
+        let uptime = 0
+        if self.start_time > 0:
+            uptime = self.get_timestamp() - self.start_time
         return {
             "name": self.name,
             "status": self.status,
-            "uptime": self.get_timestamp() - self.start_time if self.start_time > 0 else 0,
+            "uptime": uptime,
             "error": self.error,
         }
 

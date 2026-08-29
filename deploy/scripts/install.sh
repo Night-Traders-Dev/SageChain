@@ -66,7 +66,9 @@ install_config() {
         log_warn "Config already exists at $ORBIT_CONFIG, backing up..."
         cp "$ORBIT_CONFIG" "$ORBIT_CONFIG.backup.$(date +%s)"
     fi
-    cp deploy/config.toml "$ORBIT_CONFIG"
+    # Get the directory where this script is located
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    cp "$script_dir/../config.toml" "$ORBIT_CONFIG"
     chown "$ORBIT_USER:$ORBIT_GROUP" "$ORBIT_CONFIG"
     chmod 640 "$ORBIT_CONFIG"
     log_info "Config installed to $ORBIT_CONFIG"
@@ -109,8 +111,9 @@ EOF
 
 install_systemd() {
     log_info "Installing systemd services..."
-    cp deploy/systemd/*.service /etc/systemd/system/
-    cp deploy/systemd/orbit.target /etc/systemd/system/
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    cp "$script_dir/../systemd/"*.service /etc/systemd/system/
+    cp "$script_dir/../systemd/orbit.target" /etc/systemd/system/
     systemctl daemon-reload
     log_info "Systemd services installed"
 }

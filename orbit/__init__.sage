@@ -5,3 +5,4 @@
 import orbit.core
 import orbit.crypto
 import orbit.mining
+import orbit.ffi

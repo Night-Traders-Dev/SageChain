@@ -10,18 +10,23 @@ proc parse_config(text):
     let current_section = ""
     for line in lines:
         line = line.strip()
-        if line == "" or line.startswith("#"):
+        if line == "" or line[0] == "#":
             continue
-        if line.startswith("[") and line.endswith("]"):
-            current_section = line[1:-1]
+        if len(line) >= 2 and line[0] == "[" and line[len(line)-1] == "]":
+            current_section = line[1:len(line)-1]
             config[current_section] = {}
         else:
             let eq = line.find("=")
             if eq > 0:
                 let key = line[:eq].strip()
                 let val = line[eq+1:].strip()
-                if val.startswith('"') and val.endswith('"'):
-                    val = val[1:-1]
+                let val_len = len(val)
+                if val_len >= 2:
+                    let first_char = slice(val, 0, 1)
+                    let last_char = slice(val, val_len - 1, val_len)
+                    let quote_char = slice(chr(34), 0, 1)
+                    if first_char == quote_char and last_char == quote_char:
+                        val = slice(val, 1, val_len - 1)
                 elif val == "true":
                     val = true
                 elif val == "false":

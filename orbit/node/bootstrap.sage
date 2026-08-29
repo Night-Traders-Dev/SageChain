@@ -42,7 +42,7 @@ proc bootstrap_node(config_path):
     else:
         let genesis = configmod.default_genesis()
         # Override with config if specified
-        if "genesis" in config:
+        if dict_has(config, "genesis"):
             genesis = deep_merge(genesis, config["genesis"])
         let save_result = persist.save_genesis(genesis, genesis_path)
         if not save_result[0]:
@@ -107,7 +107,7 @@ proc deep_merge(base, override):
     for k in base:
         result[k] = base[k]
     for k in override:
-        if k in result and type(result[k]) == "dict" and type(override[k]) == "dict":
+        if dict_has(result, k) and type(result[k]) == "dict" and type(override[k]) == "dict":
             result[k] = deep_merge(result[k], override[k])
         else:
             result[k] = override[k]
@@ -121,7 +121,7 @@ proc validate_genesis(genesis):
     # Check required fields
     let required = ["network_id", "chain_id", "timestamp", "allocations", "mining_params"]
     for field in required:
-        if not (field in genesis):
+        if not dict_has(genesis, field):
             return [false, "missing required field: " + field]
 
     # Validate allocations sum
@@ -138,7 +138,7 @@ proc validate_genesis(genesis):
     let mp = genesis["mining_params"]
     let required_mp = ["r_base", "u_target", "s_max", "b_halflife", "node_boost_max"]
     for field in required_mp:
-        if not (field in mp):
+        if not dict_has(mp, field):
             return [false, "missing mining param: " + field]
 
     return [true, nil]
@@ -243,7 +243,5 @@ proc create_wallet_keystore(config):
 
     let encrypted = keystore.save_keystore(ks_data["wallets"], password)
     let ks_path = config["wallet"]["keystore_path"]
-    let save_result = ffi_io.write_file(ks_path, encrypted)
-    return save_result
     let save_result = ffi_io.write_file(ks_path, encrypted)
     return save_result
