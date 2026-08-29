@@ -7,6 +7,11 @@ import orbit.mining.rate as mining_rate
 
 let DEFAULT_PORT = 8333
 
+proc _max(a, b):
+    if a > b:
+        return a
+    return b
+
 class HTTPServer:
     proc init(self, chain, port = DEFAULT_PORT):
         self.chain = chain
@@ -88,7 +93,7 @@ class HTTPServer:
         if query != nil and query["limit"] != nil:
             limit = int(query["limit"])
         let start = self.chain.height() - page * limit
-        let end = max(0, start - limit + 1)
+        let end = _max(0, start - limit + 1)
         let blocks = []
         var h = start
         while h >= end and h >= 0:
@@ -196,7 +201,10 @@ class HTTPServer:
             10000, self.chain.pool_remaining, tip.height, 500000)
         let blocks = []
         var h = tip.height
-        while h >= max(0, tip.height - 100):
+        let min_h = tip.height - 100
+        if min_h < 0:
+            min_h = 0
+        while h >= min_h:
             let blk = self.chain.get_block(h)
             if blk != nil and len(blk.transactions) > 0:
                 for t in blk.transactions:
