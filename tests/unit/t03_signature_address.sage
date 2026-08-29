@@ -12,14 +12,14 @@ proc check(name, cond):
         print("FAIL: " + name)
 
 let kp = account.generate_keypair("alice-devnet-seed-01")
-check("prefix-orb", slice(kp["address"], 0, 3) == "orb")
-check("address-len", len(kp["address"]) == 43)
+check("prefix-orb", slice(kp["address"], 0, 4) == "orb:")
+check("address-len", len(kp["address"]) == 44)
 check("deterministic", account.derive_address("alice-devnet-seed-01") == kp["address"])
 check("distinct-seeds", account.derive_address("bob-seed-02") != kp["address"])
 check("validator-ok", account.is_valid_address(kp["address"]))
-check("validator-bad-prefix", not account.is_valid_address("xrb" + slice(kp["address"], 3, 43)))
-check("validator-short", not account.is_valid_address(slice(kp["address"], 0, 42)))
-check("validator-nonhex", not account.is_valid_address("orbZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"))
+check("validator-bad-prefix", not account.is_valid_address("xrb:" + slice(kp["address"], 4, 44)))
+check("validator-short", not account.is_valid_address(slice(kp["address"], 0, 43)))
+check("validator-nonhex", not account.is_valid_address("orb:ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"))
 
 let msg = "orbit test payload 001"
 let s = sig.sign(kp["seed"], msg)

@@ -232,7 +232,7 @@ proc generate_contract_address(sender, nonce):
     from crypto.hash import sha256_hex
     let parts = enc.encode_canonical([sender, str(nonce)])
     let hash = sha256_hex(parts)
-    return "orb" + hash[:40]
+    return "orb:" + hash[:40]
 
 # Contract state root
 proc contract_state_root(chain):

@@ -65,7 +65,7 @@ let ar = ldg.apply(deploy_tx, chain.pool_remaining)
 check("deploy-apply", ar[0])
 
 let contract_addr = ar[3]["contract_address"]
-check("contract-addr", contract_addr != nil and len(contract_addr) == 43)
+check("contract-addr", contract_addr != nil and len(contract_addr) == 44)
 check("contract-exists", chain.get_contract(contract_addr) != nil)
 check("alice-nonce-incremented", chain.state.accounts[alice["address"]]["nonce"] == 1)
 

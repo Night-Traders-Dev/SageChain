@@ -49,8 +49,8 @@ print("=== Testing Web Wallet ===")
 let ww = web_wallet.create_web_wallet(chain)
 
 let kp = ww.generate_keypair("web-wallet-test-seed")
-check("webwallet-keypair", kp["address"] != nil and len(kp["address"]) == 43)
-check("webwallet-keypair-prefix", kp["address"][:3] == "orb")
+check("webwallet-keypair", kp["address"] != nil and len(kp["address"]) == 44)
+check("webwallet-keypair-prefix", kp["address"][:4] == "orb:")
 
 let wallet_create_res = ww.create_wallet("test", "web-wallet-test-seed")
 check("webwallet-create", wallet_create_res["success"] and wallet_create_res["wallet"]["name"] == "test")

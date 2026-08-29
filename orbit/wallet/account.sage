@@ -11,18 +11,18 @@
 from crypto.hash import sha256_hex
 import orbit.crypto.encoding as enc
 
-let ADDRESS_PREFIX = "orb"
+let ADDRESS_PREFIX = "orb:"
 let ADDRESS_HEX_LEN = 40
-let ADDRESS_LEN = 43
+let ADDRESS_LEN = 44
 
 proc is_valid_address(a):
     if a == nil or type(a) != "string":
         return false
     if len(a) != ADDRESS_LEN:
         return false
-    if slice(a, 0, 3) != ADDRESS_PREFIX:
+    if slice(a, 0, 4) != ADDRESS_PREFIX:
         return false
-    var i = 3
+    var i = 4
     while i < ADDRESS_LEN:
         let c = a[i]
         let is_digit = c >= "0" and c <= "9"
