@@ -1,0 +1,7 @@
+[Unit]
+Description=Orbit Blockchain Services
+Requires=orbit-node.service orbit-miner.service orbit-rpc.service orbit-explorer.service
+After=orbit-node.service orbit-miner.service orbit-rpc.service orbit-explorer.service
+
+[Install]
+WantedBy=multi-user.target

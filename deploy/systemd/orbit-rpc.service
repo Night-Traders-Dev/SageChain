@@ -1,0 +1,45 @@
+[Unit]
+Description=Orbit Blockchain RPC API
+Documentation=https://github.com/Night-Traders-Dev/SageChain
+After=orbit-node.service
+Requires=orbit-node.service
+
+[Service]
+Type=simple
+User=orbit
+Group=orbit
+WorkingDirectory=/opt/orbit
+ExecStart=/usr/local/bin/sage-c /opt/orbit/orbit/api/rpc_server.sage --config /etc/orbit/config.toml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orbit-rpc
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/orbit/data /opt/orbit/logs
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Environment
+Environment=RUST_LOG=info
+Environment=ORBIT_CONFIG=/etc/orbit/config.toml
+
+[Install]
+WantedBy=multi-user.target
