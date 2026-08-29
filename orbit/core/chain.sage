@@ -28,6 +28,8 @@ class Chain:
         self.finalized_height = 0      # nothing finalized at genesis
         self.certificates = {"_": nil}  # Sage requires non-empty dict for assignment
         dict_delete(self.certificates, "_")
+        # Contracts (Phase 10) - use state.contracts for consistency with ledger
+        # self.contracts = {}
 
         # ── build genesis (height 0) ──
         let accounts = genesis.build_genesis_state()
@@ -57,6 +59,31 @@ class Chain:
         if height < 0 or height >= len(self.blocks):
             return nil
         return self.blocks[height]
+
+    # Contract methods (Phase 10)
+    proc get_contract(self, addr):
+        if dict_has(self.state.contracts, addr):
+            return self.state.contracts[addr]
+        return nil
+
+    proc set_contract(self, addr, contract):
+        self.state.contracts[addr] = contract
+        return true
+
+    proc contract_state_root(self):
+        import orbit.core.merkle as merkle
+        import orbit.crypto.encoding as encoding
+        import orbit.crypto.encoding as enc
+        from crypto.hash import sha256_hex
+        let addrs = []
+        for addr in self.contracts:
+            push(addrs, addr)
+        let sorted = encoding.sort_strings(addrs)
+        let leaves = []
+        for addr in sorted:
+            let c = self.contracts[addr]
+            push(leaves, sha256_hex(enc.encode_canonical([addr, c.balance, c.nonce])))
+        return merkle.root(leaves)
 
     # Assemble a block from validated-ready transactions and commit inputs.
     proc assemble_block(self, proposer, timestamp, transactions, proof):

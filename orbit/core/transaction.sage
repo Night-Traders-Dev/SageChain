@@ -18,10 +18,12 @@ let KIND_REWARD = "reward"
 let KIND_LOCK = "lock"
 let KIND_UNLOCK = "unlock"
 let KIND_CLAIM = "claim"
+let KIND_CONTRACT_DEPLOY = "contract_deploy"
+let KIND_CONTRACT_CALL = "contract_call"
 let POOL_SENDER = "__mining_pool__"
 let MEMO_MAX = 128
 
-let KNOWN_KINDS = [KIND_TRANSFER, KIND_REWARD, KIND_LOCK, KIND_UNLOCK, KIND_CLAIM]
+let KNOWN_KINDS = [KIND_TRANSFER, KIND_REWARD, KIND_LOCK, KIND_UNLOCK, KIND_CLAIM, KIND_CONTRACT_DEPLOY, KIND_CONTRACT_CALL]
 
 class Transaction:
     proc init(self, kind, sender, recipient, amount, fee, nonce, timestamp):
@@ -41,6 +43,11 @@ class Transaction:
         self.lock_duration = 0      # blocks
         self.claim_height = 0       # height when claimable
         self.lockup_id = nil        # unique ID for lockup position
+        # contract fields
+        self.contract_code = nil    # deploy only: WASM bytecode
+        self.gas_limit = 0          # max gas for execution
+        self.value = "0"            # value transferred
+        self.input_data = ""        # call only: calldata
 
 proc canonical_fields(tx):
     # Fixed field set for hashing — signature material EXCLUDED.
@@ -60,6 +67,14 @@ proc canonical_fields(tx):
         d["lock_duration"] = tx.lock_duration
         d["claim_height"] = tx.claim_height
         d["lockup_id"] = tx.lockup_id
+    if tx.kind == KIND_CONTRACT_DEPLOY:
+        d["contract_code"] = tx.contract_code
+        d["gas_limit"] = tx.gas_limit
+        d["value"] = tx.value
+    if tx.kind == KIND_CONTRACT_CALL:
+        d["gas_limit"] = tx.gas_limit
+        d["value"] = tx.value
+        d["input_data"] = tx.input_data
     return d
 
 proc compute_id(tx):
@@ -82,8 +97,8 @@ proc validate(tx, state, pool_remaining):
     if not found_kind:
         return [false, errors.ERR_INVALID_TX]
 
-    # Allow zero amount for lockup transactions (lock/unlock/claim have their own validation)
-    if tx.kind != KIND_LOCK and tx.kind != KIND_UNLOCK and tx.kind != KIND_CLAIM:
+    # Allow zero amount for lockup transactions and contract transactions (lock/unlock/claim/contract_deploy/contract_call have their own validation)
+    if tx.kind != KIND_LOCK and tx.kind != KIND_UNLOCK and tx.kind != KIND_CLAIM and tx.kind != KIND_CONTRACT_DEPLOY and tx.kind != KIND_CONTRACT_CALL:
         if type(tx.amount) != "string" or bi.bi_is_zero(tx.amount) or bi.bi_cmp(tx.amount, "0") < 0:
             return [false, errors.ERR_INVALID_TX]
     # fee is optional: treat nil as zero, but never mutate the tx under test
@@ -112,10 +127,12 @@ proc validate(tx, state, pool_remaining):
         return validate_unlock(tx, state)
     if tx.kind == KIND_CLAIM:
         return validate_claim(tx, state)
-    if tx.kind == KIND_UNLOCK:
-        return validate_unlock(tx, state)
-    if tx.kind == KIND_CLAIM:
-        return validate_claim(tx, state)
+
+    # contract path
+    if tx.kind == KIND_CONTRACT_DEPLOY:
+        return validate_contract_deploy(tx, state, pool_remaining)
+    if tx.kind == KIND_CONTRACT_CALL:
+        return validate_contract_call(tx, state, pool_remaining)
 
     # transfer path
     if not account.is_valid_address(tx.sender):
@@ -219,6 +236,61 @@ proc validate_claim(tx, state):
     # lockup_id must reference an existing lockup
     if tx.lockup_id == nil:
         return [false, errors.ERR_INVALID_TX]
+    return [true, nil]
+
+proc encode_unsigned(tx):
+    return encoding.encode_canonical(canonical_fields(tx))
+
+# Contract deploy validation
+proc validate_contract_deploy(tx, state, pool_remaining):
+    if not account.is_valid_address(tx.sender):
+        return [false, errors.ERR_INVALID_TX]
+    if not dict_has(state, tx.sender):
+        return [false, errors.ERR_INSUFFICIENT]
+    let acct = state[tx.sender]
+    if tx.nonce != acct["nonce"]:
+        return [false, errors.ERR_NONCE_MISMATCH]
+    if tx.signature == nil or tx.public_key == nil:
+        return [false, errors.ERR_BAD_SIGNATURE]
+    if not signatures.verify(tx.public_key, encode_unsigned(tx), tx.signature):
+        return [false, errors.ERR_BAD_SIGNATURE]
+    if signatures.address_for_public_key(tx.public_key) != tx.sender:
+        return [false, errors.ERR_BAD_SIGNATURE]
+    if tx.contract_code == nil or len(tx.contract_code) == 0:
+        return [false, errors.ERR_INVALID_TX]
+    if tx.gas_limit == nil or tx.gas_limit <= 0:
+        return [false, errors.ERR_INVALID_TX]
+    if bi.bi_cmp(tx.value, "0") < 0:
+        return [false, errors.ERR_INVALID_TX]
+    let spend = bi.bi_add(tx.value, tx.fee)
+    if bi.bi_cmp(spend, acct["balance"]) > 0:
+        return [false, errors.ERR_INSUFFICIENT]
+    return [true, nil]
+
+# Contract call validation
+proc validate_contract_call(tx, state, pool_remaining):
+    if not account.is_valid_address(tx.sender):
+        return [false, errors.ERR_INVALID_TX]
+    if not account.is_valid_address(tx.recipient):
+        return [false, errors.ERR_INVALID_TX]
+    if not dict_has(state, tx.sender):
+        return [false, errors.ERR_INSUFFICIENT]
+    let acct = state[tx.sender]
+    if tx.nonce != acct["nonce"]:
+        return [false, errors.ERR_NONCE_MISMATCH]
+    if tx.signature == nil or tx.public_key == nil:
+        return [false, errors.ERR_BAD_SIGNATURE]
+    if not signatures.verify(tx.public_key, encode_unsigned(tx), tx.signature):
+        return [false, errors.ERR_BAD_SIGNATURE]
+    if signatures.address_for_public_key(tx.public_key) != tx.sender:
+        return [false, errors.ERR_BAD_SIGNATURE]
+    if tx.gas_limit == nil or tx.gas_limit <= 0:
+        return [false, errors.ERR_INVALID_TX]
+    if bi.bi_cmp(tx.value, "0") < 0:
+        return [false, errors.ERR_INVALID_TX]
+    let spend = bi.bi_add(tx.value, tx.fee)
+    if bi.bi_cmp(spend, acct["balance"]) > 0:
+        return [false, errors.ERR_INSUFFICIENT]
     return [true, nil]
 
 proc encode_unsigned(tx):

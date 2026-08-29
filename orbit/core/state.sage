@@ -22,6 +22,7 @@ proc new_account(address):
 class WorldState:
     proc init(self):
         self.accounts = {}
+        self.contracts = {}
 
     proc get(self, address):
         if not dict_has(self.accounts, address):
@@ -43,6 +44,8 @@ class WorldState:
                 "validator_status": a["validator_status"],
                 "lockups": a["lockups"],
             }
+        for addr in self.contracts:
+            copy.contracts[addr] = self.contracts[addr]
         return copy
 
     proc state_root(self):

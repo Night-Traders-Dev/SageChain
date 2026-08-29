@@ -1,10 +1,12 @@
 # orbit/core/ledger.sage — deterministic state transition engine (plan §4)
-# Orbit Blockchain | Protocol v1 | Status: implemented (transfer/reward/lockup)
+# Orbit Blockchain | Protocol v1 | Status: implemented (transfer/reward/lockup/contract)
 #
 # apply() MUST only be called after transaction.validate() succeeded.
 # Deterministic order of mutations; no wall-clock reads anywhere.
 
 import orbit.core.bigint as bi
+import orbit.contracts.sandbox as sandbox
+import orbit.contracts.gas as gas
 
 class Ledger:
     proc init(self, world_state):
@@ -25,6 +27,11 @@ class Ledger:
             return self.apply_unlock(tx, pool_remaining)
         if tx.kind == "claim":
             return self.apply_claim(tx, pool_remaining)
+
+        if tx.kind == "contract_deploy":
+            return self.apply_contract_deploy(tx, pool_remaining)
+        if tx.kind == "contract_call":
+            return self.apply_contract_call(tx, pool_remaining)
 
         # transfer
         let sender_acct = self.state.get(tx.sender)
@@ -122,3 +129,49 @@ class Ledger:
         let den = bi.bi_from_number(APR_DENOMINATOR * BLOCKS_PER_YEAR)
         let qr = bi.bi_divmod(num, den)
         return qr[0]
+
+    proc apply_contract_deploy(self, tx, pool_remaining):
+        let contract_addr = sandbox.generate_contract_address(tx.sender, tx.nonce)
+        let contract = sandbox.Contract(tx.contract_code, contract_addr)
+        if not dict_has(self.state, "contracts") or self.state.contracts == nil:
+            self.state.contracts = {}
+        self.state.contracts[contract_addr] = contract
+
+        let sender_acct = self.state.get(tx.sender)
+        let spend = bi.bi_add(tx.value, tx.fee)
+        sender_acct["balance"] = bi.bi_sub(sender_acct["balance"], spend)
+        sender_acct["nonce"] = sender_acct["nonce"] + 1
+        sender_acct["activity_marker"] = tx.timestamp
+
+        if bi.bi_cmp(tx.value, "0") > 0:
+            contract.add_balance(tx.value)
+
+        return [true, nil, pool_remaining, {"contract_address": contract_addr}]
+
+    proc apply_contract_call(self, tx, pool_remaining):
+        let contract_addr = tx.recipient
+        if not dict_has(self.state.contracts, contract_addr):
+            return [false, "contract_not_found", pool_remaining]
+        let contract = self.state.contracts[contract_addr]
+
+        let sender_acct = self.state.get(tx.sender)
+        let spend = bi.bi_add(tx.value, tx.fee)
+        sender_acct["balance"] = bi.bi_sub(sender_acct["balance"], spend)
+        sender_acct["nonce"] = sender_acct["nonce"] + 1
+        sender_acct["activity_marker"] = tx.timestamp
+
+        if bi.bi_cmp(tx.value, "0") > 0:
+            sender_acct["balance"] = bi.bi_sub(sender_acct["balance"], tx.value)
+            contract.add_balance(tx.value)
+
+        let gas_limit = tx.gas_limit
+        let gas_meter = gas.GasMeter(gas_limit)
+
+        let vm = sandbox.VMState(contract, gas_meter, tx.sender, tx.value, tx.input_data)
+        let result = sandbox.execute_bytecode(vm)
+
+        let gas_used = gas_meter.used
+        let gas_refund = gas_meter.remaining() / 2
+        gas_meter.refund(gas_refund)
+
+        return [result[0], result[1], pool_remaining, {"gas_used": gas_used, "return_data": vm.return_data}]
