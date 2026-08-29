@@ -11,14 +11,14 @@ import orbit.wallet.account
 ## Quick start (sage-c)
 
 ```sh
-sage-c tests/run_tests.sh   # 13 suites / 156 checks
+sage-c tests/run_tests.sh   # 16 suites / 230 checks
 sage-c -c 'import orbit; print("orbit loaded")'
 ```
 
 ## Layout
 
 ```
-orbit/           chain packages (core, crypto, consensus, mining, wallet, network, storage, contracts, api, cli, devnet)
+orbit/           chain packages (core, crypto, consensus, mining, wallet, network, storage, contracts, api, cli, devnet, ecosystem)
 tests/           unit + vectors + run_tests.sh
 docs/            protocol documentation (ORBIT.md, MINING.md, CONSENSUS.md, etc.)
 tools/           gen_mining_vectors.sage
@@ -29,7 +29,7 @@ See [plan.md](./plan.md) §52 for the dependency-order build plan and §53 for t
 
 ## Status
 
-**Phase 1–6 complete** — Deterministic core, mining, PoI consensus, P2P gossip/sync, wallet CLI, RPC API, and 3-node devnet integration all implemented and tested under `sage-c`.
+**Phase 1–10 complete** — Deterministic core, mining, PoI consensus, P2P gossip/sync, wallet CLI, RPC API, 3-node devnet, lockups, ecosystem clients, and smart contracts all implemented and tested under `sage-c`.
 
 - **Phase 1**: Deterministic core (canonical serialization, bigint, transactions, merkle state, genesis, block validation)
 - **Phase 2**: Wallets & token transfer (Lamport keypairs, orb addresses, signing, nonces, fees)
@@ -37,8 +37,10 @@ See [plan.md](./plan.md) §52 for the dependency-order build plan and §53 for t
 - **Phase 4**: PoI consensus (validator registry, trust/uptime scoring, signed weighted voting, 2/3 finality, no-reorg rule)
 - **Phase 5**: P2P transport/sync (peer identity, handshake, gossip rules, rate limits, chain sync, block/transaction gossip)
 - **Phase 6**: Devnet (3-node deterministic network, mining rewards, transfers, disconnect/reconnect, state convergence, finality)
-
-Next: **Phase 7** — Explorer backend, RPC hardening, block/transaction/address pages, validator pages, mining charts.
+- **Phase 7**: Explorer/API (HTTP server, RPC endpoints, explorer queries for blocks/txs/addresses/validators/mining/network)
+- **Phase 8**: Token lockups (lock/unlock/claim transactions, deterministic 5% APR rewards, state machine)
+- **Phase 9**: Ecosystem clients (Discord bot, web wallet, exchange client with order matching, API documentation)
+- **Phase 10**: Smart contracts (Orbim VM, gas accounting, WASM sandbox, contract deploy/call, deterministic state roots)
 
 ## Test suites
 
@@ -56,6 +58,9 @@ t10  voting/finality        (18 checks)  PoI weighted voting, 2/3 threshold, cer
 t11  p2p/gossip             (7 checks)   duplicate rejection, size limits, network隔离, rate limiting
 t12  sync                   (10 checks)  chain synchronization, block ingestion
 t13  devnet                 (14 checks)  3-node integration: mining, transfers, finality, convergence
+t14  lockup                 (30 checks)  lock/unlock/claim, APR rewards, state machine
+t15  ecosystem              (30 checks)  Discord bot, web wallet, exchange client
+t16  contract               (14 checks)  contract deploy/call, gas, VM, state roots
 ```
 
 ## Address format
@@ -96,6 +101,24 @@ GET  /supply           supply info
 POST /tx               submit transaction
 ```
 
+## Explorer Endpoints
+
+```
+GET  /explorer/blocks?page=0&limit=20      paginated blocks (newest first)
+GET  /explorer/txs?page=0&limit=50         paginated transactions
+GET  /explorer/address/<address>           address with recent transactions
+GET  /explorer/validators                  all validators with full details
+GET  /explorer/mining/stats                current rate, pool, recent rewards
+GET  /explorer/network/health              height, finality lag, validator count
+```
+
+## Smart Contract Endpoints
+
+```
+GET  /tx/<txid>        contract deployment/call transactions
+GET  /explorer/address/<contract>  contract state (balance, nonce, storage)
+```
+
 ## Protocol documents
 
 See [docs/](./docs/) for detailed specifications:
@@ -106,6 +129,7 @@ See [docs/](./docs/) for detailed specifications:
 - [SECURITY.md](./docs/SECURITY.md) — Threat model and security assumptions
 - [TOKENOMICS.md](./docs/TOKENOMICS.md) — Supply allocations, lockups, mining pool, emissions
 - [ORBIT_RPC.md](./docs/ORBIT_RPC.md) — Public API and client protocol
+- [API.md](./docs/API.md) — Complete REST API reference
 
 ## License
 
