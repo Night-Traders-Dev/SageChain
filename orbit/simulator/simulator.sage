@@ -1,0 +1,329 @@
+# orbit/simulator/simulator.sage — Economics Simulator (Phase 11)
+# Orbit Blockchain | Protocol v1 | Status: implemented
+#
+# Standalone economic simulator for testing Orbit's monetary model at scale.
+# This is NOT a consensus oracle - it's for economic testing only.
+# Based on plan.md §45 specification.
+
+import orbit.core.bigint as bi
+import orbit.mining.rate as mining_rate
+import orbit.mining.rewards as rewardsmod
+import orbit.wallet.account as account
+
+# ============================================================
+# SIMULATION PARAMETERS
+# ============================================================
+
+let DEFAULT_PARAMS = {
+    "r_base": "8200000",
+    "u_target": 10000,
+    "s_max": "100000000000000000",
+    "b_halflife": 100000,
+    "node_boost_max": 100000,
+    "blocks_per_year": 63072,
+    "apr_numerator": 5,
+    "apr_denominator": 100,
+}
+
+# ============================================================
+# NETWORK STATE
+# ============================================================
+
+class NetworkState:
+    proc init(self, params = nil):
+        if params == nil:
+            self.params = DEFAULT_PARAMS
+        else:
+            self.params = params
+        self.block_height = 0
+        self.total_supply = "10000000000000000000"  # 100B ORBIT in base units
+        self.mining_pool = "100000000000000000"    # 1B ORBIT mining pool
+        self.circulating = "1000000000000000000"   # 10B circulating initially
+        self.locked = "0"
+        self.validators = []
+        self.users = []
+        self.accounts = {}
+        self.metrics = {
+            "block_heights": [],
+            "active_users": [],
+            "mining_pool": [],
+            "minted": [],
+            "rate": [],
+            "rewards": [],
+            "validator_scores": [],
+        }
+
+    proc add_validator(self, address = nil, stake = "100000000000", uptime = 1000000, trust = 1000000):
+        if address == nil:
+            # Generate a deterministic validator address
+            let seed = "sim-validator-" + str(len(self.validators)) + "-" + str(self.block_height)
+            let kp = account.generate_keypair(seed)
+            address = kp["address"]
+        if not dict_has(self.accounts, address):
+            self.accounts[address] = {
+                "balance": "0",
+                "nonce": 0,
+                "locked_balance": "0",
+                "activity_marker": 0,
+                "validator_status": nil,
+                "lockups": {},
+            }
+        let acct = self.accounts[address]
+        acct["validator_status"] = "active"
+        acct["locked_balance"] = bi.bi_add(acct["locked_balance"], stake)
+        acct["balance"] = bi.bi_sub(acct["balance"], stake)
+        push(self.validators, {
+            "address": address,
+            "stake": stake,
+            "uptime": uptime,
+            "trust": trust,
+            "active": true,
+            "valid_votes": 0,
+            "invalid_votes": 0,
+        })
+
+    proc add_users(self, count):
+        for i in range(count):
+            let seed = "sim-user-" + str(self.block_height) + "-" + str(i)
+            import orbit.wallet.account as account
+            let kp = account.generate_keypair(seed)
+            let u = {
+                "address": kp["address"],
+                "balance": "100000000",
+                "locked": "0",
+                "active": true,
+                "last_activity": 0,
+            }
+            push(self.users, u)
+        return len(self.users)
+
+    proc get(self, address):
+        if not dict_has(self.accounts, address):
+            self.accounts[address] = {
+                "balance": "0",
+                "nonce": 0,
+                "locked_balance": "0",
+                "activity_marker": 0,
+                "validator_status": nil,
+                "lockups": {},
+            }
+        return self.accounts[address]
+
+    proc has(self, address):
+        return dict_has(self.accounts, address)
+
+    proc clone(self):
+        let copy = NetworkState()
+        for addr in self.accounts:
+            let a = self.accounts[addr]
+            copy.accounts[addr] = {
+                "balance": a["balance"],
+                "nonce": a["nonce"],
+                "locked_balance": a["locked_balance"],
+                "activity_marker": a["activity_marker"],
+                "validator_status": a["validator_status"],
+                "lockups": a["lockups"],
+            }
+        return copy
+
+    proc state_root(self):
+        # leaves: sha256(canonical([address, balance, nonce, locked, activity, lockups]))
+        let addrs = []
+        for addr in self.accounts:
+            push(addrs, addr)
+        let sorted = encoding.sort_strings(addrs)
+        let leaves = []
+        for addr in sorted:
+            let a = self.accounts[addr]
+            push(leaves, sha256_hex(encoding.encode_canonical(
+                [addr, a["balance"], a["nonce"], a["locked_balance"], a["activity_marker"], a["lockups"]]
+            )))
+        return merkle.root(leaves)
+
+# ============================================================
+# SIMULATION PARAMETERS
+# ============================================================
+
+let DEFAULT_PARAMS = {
+    "r_base": "8200000",
+    "u_target": 10000,
+    "s_max": "100000000000000000",
+    "b_halflife": 100000,
+    "node_boost_max": 100000,
+    "blocks_per_year": 63072,
+    "apr_numerator": 5,
+    "apr_denominator": 100,
+}
+
+# ============================================================
+# SIMULATION ENGINE
+# ============================================================
+
+class Simulator:
+    proc init(self, params = nil):
+        if params == nil or len(params) == 0:
+            self.params = DEFAULT_PARAMS
+        else:
+            self.params = params
+        self.state = NetworkState(self.params)
+        self.results = []
+
+    proc run(self, blocks, users_per_block = 0, validators = 3):
+        # Initialize validators
+        for i in range(validators):
+            self.state.add_validator()
+
+        # Run simulation
+        var b = 0
+        while b < blocks:
+            # Add new users periodically
+            if users_per_block > 0 and b % 100 == 0:
+                self.state.add_users(users_per_block)
+
+            # Calculate mining rate
+            let rate = calculate_rate(self.params, self.state)
+
+            # Calculate block reward
+            let block_time = int(self.params["max_block_time"] or 500)
+            let reward = calculate_block_reward(rate, block_time, self.state.mining_pool)
+
+            # Update state
+            self.state.block_height = self.state.block_height + 1
+            self.state.mining_pool = bi.bi_sub(self.state.mining_pool, reward)
+            self.state.circulating = bi.bi_add(self.state.circulating, reward)
+
+            # Process lockup rewards
+            let lockup_rewards = "0"
+            # Simplified: process lockups for active validators
+            for v in self.state.validators:
+                if v["active"]:
+                    let lockup = {"amount": v["stake"], "lock_height": self.state.block_height - 1000}
+                    let lr = calculate_lockup_reward(lockup, self.state.block_height, self.params)
+                    if bi.bi_cmp(lr, "0") > 0:
+                        lockup_rewards = bi.bi_add(lockup_rewards, lr)
+
+            self.state.circulating = bi.bi_add(self.state.circulating, lockup_rewards)
+
+            # Record metrics
+            push(self.state.metrics["block_heights"], self.state.block_height)
+            push(self.state.metrics["active_users"], str(len(self.state.users)))
+            push(self.state.metrics["mining_pool"], self.state.mining_pool)
+            push(self.state.metrics["minted"], bi.bi_sub("10000000000000000000", bi.bi_sub(self.state.circulating, lockup_rewards)))
+            push(self.state.metrics["rate"], rate)
+            push(self.state.metrics["rewards"], reward)
+            push(self.state.metrics["validator_scores"], "1000000")
+
+            # Progress
+            if self.state.block_height % 1000 == 0:
+                ffi.ffi_log("info", "sim block " + str(self.state.block_height) + ": rate=" + rate + " pool=" + self.state.mining_pool)
+
+            b = b + 1
+
+        return self.collect_results()
+
+    proc collect_results(self):
+        return {
+            "final_height": self.state.block_height,
+            "final_pool": self.state.mining_pool,
+            "final_circulating": self.state.circulating,
+            "total_users": len(self.state.users),
+            "total_validators": len(self.state.validators),
+            "metrics": self.state.metrics,
+        }
+
+# ============================================================
+# MINING RATE CALCULATION
+# ============================================================
+
+proc calculate_rate(params, state):
+    # UserFactor = (U_target / max(U, U_target))^0.5
+    let u = len(state.users)
+    let u_target = int(state.params["u_target"])
+    let effective_u = u_target
+    if u >= u_target:
+        effective_u = u
+    let uf_num = int(state.params["u_target"])
+    let uf_den = effective_u
+    # Fixed point: UF = SCALE * sqrt(u_target / max(u, u_target))
+    # For simulation, use simplified: UF = u_target / max(u, u_target)
+    let uf = bi.bi_div(bi.bi_from_number(uf_num * 1000000), bi.bi_from_number(uf_den))
+
+    # SupplyFactor = S / S_max (scaled)
+    let s = state.mining_pool
+    let s_max = state.params["s_max"]
+    let qr = bi.bi_divmod(bi.bi_mul(s, "1000000"), s_max)
+    let sf = qr[0]
+
+    # TimeDecay = 0.5^(B / B_halflife)
+    # Integer approximation: TD = 1 / 2^(height / halflife)
+    let h = state.block_height
+    let hl = int(state.params["b_halflife"])
+    let halvings = int(h / hl)
+    let td = bi.bi_from_number(1000000)
+    var i = 0
+    while i < halvings:
+        td = bi.bi_div(td, "2")
+        i = i + 1
+    if td == 0:
+        td = "1"  # minimum
+
+    # NodeBoost = 1 + min(score, 0.10)
+    # Simplified: assume average score 0.5
+    let nb = bi.bi_from_number(1050000)  # 1.05 * SCALE
+
+    # Rate = R_base * UF * SF * TD * NB / SCALE^4
+    let scale = "1000000"
+    let scale4 = bi.bi_mul(bi.bi_mul(scale, scale), bi.bi_mul(scale, scale))
+    let r_base = state.params["r_base"]
+
+    let num = bi.bi_mul(r_base, uf)
+    num = bi.bi_mul(num, sf)
+    num = bi.bi_mul(num, td)
+    num = bi.bi_mul(num, nb)
+    let qr = bi.bi_divmod(num, scale4)
+    return qr[0]
+
+# ============================================================
+# BLOCK REWARD CALCULATION
+# ============================================================
+
+proc calculate_block_reward(rate, eligible_seconds, pool_remaining):
+    let total = bi.bi_mul(rate, bi.bi_from_number(eligible_seconds))
+    if bi.bi_cmp(total, pool_remaining) > 0:
+        return pool_remaining   # pool exhaustion pins reward to remainder (§10)
+    return total
+
+# ============================================================
+# LOCKUP REWARD CALCULATION
+# ============================================================
+
+proc calculate_lockup_reward(lockup, current_height, params):
+    # 5% APR = 5/100 per year
+    # blocks_per_year = 63072
+    # Rate per block = 0.05 / 63072
+    # Fixed-point: reward = amount * 5 * blocks_locked / (100 * blocks_per_year)
+    let BLOCKS_PER_YEAR = 63072
+    let APR_NUMERATOR = 5  # 5%
+    let APR_DENOMINATOR = 100
+    let lock_height = int(lockup["lock_height"])
+    let blocks_locked = current_height - lock_height
+    if blocks_locked <= 0:
+        return "0"
+    # Fixed-point calculation
+    let num = bi.bi_mul(lockup["amount"], bi.bi_from_number(APR_NUMERATOR * blocks_locked))
+    let den = bi.bi_from_number(APR_DENOMINATOR * params["blocks_per_year"])
+    let qr = bi.bi_divmod(num, den)
+    return qr[0]
+
+# ============================================================
+# SIMULATION SCENARIOS
+# ============================================================
+
+proc run_scenario(name, blocks, users, validators, users_per_block = 10):
+    ffi.ffi_log("info", "=== Running scenario: " + name + " ===")
+    let sim = Simulator()
+    let result = sim.run(blocks, users_per_block, validators)
+    ffi.ffi_log("info", name + " complete: height=" + str(result["final_height"]) + " pool=" + result["final_pool"] + " circulating=" + result["final_circulating"])
+    return result
+
+
